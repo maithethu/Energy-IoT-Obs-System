@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.14.0/schema.json",
+  "name": "note175f3000b47a47d8",
+  "position": {
+    "x": 16,
+    "y": 2,
+    "z": 100,
+    "height": 28,
+    "width": 1248,
+    "tabOrder": 100
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Nguồn: DỮ LIỆU LỊCH SỬ 8 tháng (01/11/2017 – 26/06/2018) đã nạp sẵn · DB energy_history · detector chạy một lượt, không có người trực",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "fontWeight": "bold",
+                      "color": "#5A6774"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

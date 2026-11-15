@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.14.0/schema.json",
+  "name": "notecd6a5ea5ef6847a7",
+  "position": {
+    "x": 16,
+    "y": 2,
+    "z": 100,
+    "height": 28,
+    "width": 1248,
+    "tabOrder": 100
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Nguồn: DỮ LIỆU DIỄN TẬP thời gian thực (các lần phát lại có người trực, mỗi lần một mã sự cố) · DB energy · bấm Refresh sau mỗi lần phát",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "fontWeight": "bold",
+                      "color": "#1D4ED8"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

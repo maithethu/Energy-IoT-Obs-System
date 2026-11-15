@@ -1,0 +1,25 @@
+cultureInfo en-US
+
+	linguisticMetadata =
+			{
+			  "Version": "1.0.0",
+			  "Language": "en-US",
+			  "Entities": {
+			    "dim_station.station_name": {
+			      "Binding": {
+			        "ConceptualEntity": "dim_station",
+			        "ConceptualProperty": "station_name"
+			      },
+			      "State": "Generated"
+			    },
+			    "dim_date.year_month": {
+			      "Binding": {
+			        "ConceptualEntity": "dim_date",
+			        "ConceptualProperty": "year_month"
+			      },
+			      "State": "Generated"
+			    }
+			  }
+			}
+		contentType: json
+
