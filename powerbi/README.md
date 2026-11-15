@@ -6,9 +6,19 @@ Báo cáo trả lời 5 nhóm câu hỏi nghiệp vụ (sped.md §5.2). **Không
 |---|---|
 | `CanhBaoQuaTai_v2/` | Project Power BI mới (PBIP): 9 bảng, 32 measure, 5 trang. **Dùng bản này** |
 | `gold_views.sql` | Lớp gold (VIEW) – cài trên `energy_history` và `energy` |
-| `build_pbip_v2.py` | Sinh lại `CanhBaoQuaTai_v2/` từ view gold (ghi đè thư mục) |
+| `build_pbip_v2.py` | Sinh lại `CanhBaoQuaTai_v2/` từ view gold – **ghi đè** mọi chỉnh sửa (kể cả bản đã Save bằng Power BI Desktop); hiện không dùng nữa |
 | `CanhBaoQuaTai/` | Bản cũ (có A/B, chế độ CSV/PostgreSQL) – giữ để tham khảo |
 | `_legacy_v1/`, `_backup_csv_*` | Dữ liệu và bản sao lưu cũ |
+
+## 0. Nguồn dữ liệu từng trang (ghi chú có trên đầu mỗi trang)
+
+| Trang | Nguồn |
+|---|---|
+| 1 · Lưới điện, 2 · Sự cố, 5 · Cảm biến | **Dữ liệu lịch sử 8 tháng đã nạp sẵn** (DB `energy_history`, detector chạy một lượt) |
+| 3 · Vận hành, 4 · Chuyển tải | **Dữ liệu diễn tập thời gian thực** (DB `energy`, mỗi lần phát lại một mã sự cố – cột `replay_event_id`) |
+
+Khi triển khai thật: một kho trung tâm cho cả Streamlit và Power BI; Power BI làm mới định kỳ (không streaming).
+Chuẩn bị dữ liệu demo: `scripts/prepare_demo.sh` (một lệnh, chạy một lần).
 
 ## 1. Nguồn dữ liệu (Import, Refresh tay)
 

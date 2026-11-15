@@ -16,7 +16,8 @@ TEXT_ON = {"RED": "#FFFFFF", "YELLOW": "#1F1F1F", "SENSOR": "#FFFFFF", "NORMAL":
 LEVEL_LABEL = {"RED": "Đỏ", "YELLOW": "Vàng", "SENSOR": "Cảm biến", "NORMAL": "Bình thường"}
 # Màu chữ cho SỐ LIỆU / XU HƯỚNG: tông đậm, tương phản ≥ 4.5:1 trên nền trắng
 INK = {"RED": "#C8102E", "AMBER": "#9A6700", "ORANGE": "#C2410C", "GREEN": "#15803D",
-       "GRAY": "#111827", "BLUE": "#1D4ED8"}   # GRAY: chữ trung tính = đen
+       "GRAY": "#111827", "BLUE": "#1D4ED8",   # GRAY: chữ trung tính = đen
+       "SENSOR": "#6B7280"}                    # xám đậm (tương phản ≥ 4.5:1): số liệu khi cảm biến lỗi
 NAVY = "#14213D"
 OPERATOR = "Người trực A"                       # một người trực duy nhất
 SIM_TAG = "mô phỏng"                            # nhãn cho số liệu sau chuyển tải
@@ -30,6 +31,8 @@ CSS = f"""
 .block-container {{padding-top: 2.6rem; max-width: 1400px;}}
 [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * {{color: #111827 !important;}}
 [data-testid="stToolbar"] {{display: none;}}
+/* Trang tự làm mới mỗi 5 giây: tắt hiệu ứng mờ "đang cập nhật" để màn hình người trực không nháy (sped R7) */
+.stale-element, [data-stale="true"] {{opacity: 1 !important; transition: none !important;}}
 h1, h2, h3 {{color: {NAVY};}}
 .topbar {{background: {NAVY}; color: #fff; border-radius: 10px; padding: 14px 20px; margin-bottom: 14px;
           display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;}}
@@ -144,6 +147,7 @@ def legend_html(p: dict) -> str:
         (INK["ORANGE"], f"{p['close_pct']}–{p['yellow_pct']}%"),
         (INK["AMBER"], f"{p['yellow_pct']}–{p['red_pct']}%"),
         (INK["RED"], f"≥ {p['red_pct']}%"),
+        (INK["SENSOR"], "xám: cảm biến lỗi – số liệu không tin cậy"),
     ]
     rows = "".join(f'<li>{chip(level)}<span>{text}</span></li>' for level, text in status)
     nums = "".join(f'<li><span class="dot" style="background:{c}"></span>{span(t, c)}</li>' for c, t in numbers)

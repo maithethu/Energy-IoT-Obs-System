@@ -128,6 +128,35 @@ table live_transfer
 		summarizeBy: none
 		sourceColumn: receiver_pushed
 
+	column replay_id
+		dataType: int64
+		formatString: 0
+		lineageTag: 2fcec287-3fa8-40a9-9fd5-8ed1df48b865
+		summarizeBy: none
+		sourceColumn: replay_id
+
+	column replay_event_id
+		dataType: string
+		lineageTag: 40bd7ad4-bfd3-40b3-9d12-2c24efba94b0
+		summarizeBy: none
+		sourceColumn: replay_event_id
+
+	column replay_started_at
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn
+		lineageTag: 2e0a2236-176f-4983-939e-dab7c565a758
+		summarizeBy: none
+		sourceColumn: replay_started_at
+
+		annotation UnderlyingDateTimeDataType = DateTime
+
+	column is_replay_end_return
+		dataType: int64
+		formatString: 0
+		lineageTag: 4aa764f0-1a4c-436c-b117-fcfb75b128ba
+		summarizeBy: none
+		sourceColumn: is_replay_end_return
+
 	partition live_transfer = m
 		mode: import
 		source =
@@ -135,6 +164,7 @@ table live_transfer
 				    Db = PostgreSQL.Database ( PgServer, DbLive ),
 				    Source = Db{[Schema = "gold", Item = "fact_transfer"]}[Data],
 				    Run = Table.SelectRows ( Source, each [run_id] = "LIVE" ),
-				    Typed = Table.TransformColumnTypes ( Run, {{"action_id", Int64.Type}, {"alert_id", Int64.Type}, {"run_id", type text}, {"source_station", type text}, {"target_station", type text}, {"amount", type number}, {"effective_from_ts", type datetime}, {"effective_to_ts", type datetime}, {"date", type date}, {"return_reason", type text}, {"active_min", type number}, {"is_safe_return", Int64.Type}, {"is_timeout_return", Int64.Type}, {"is_overdue", Int64.Type}, {"is_active", Int64.Type}, {"done_by", type text}, {"receiver_level", Int64.Type}, {"receiver_pushed", Int64.Type}}, "en-US" )
+				    Typed = Table.TransformColumnTypes ( Run, {{"action_id", Int64.Type}, {"alert_id", Int64.Type}, {"run_id", type text}, {"source_station", type text}, {"target_station", type text}, {"amount", type number}, {"effective_from_ts", type datetime}, {"effective_to_ts", type datetime}, {"date", type date}, {"return_reason", type text}, {"active_min", type number}, {"is_safe_return", Int64.Type}, {"is_timeout_return", Int64.Type}, {"is_overdue", Int64.Type}, {"is_active", Int64.Type}, {"done_by", type text}, {"receiver_level", Int64.Type}, {"receiver_pushed", Int64.Type}, {"replay_id", Int64.Type}, {"replay_event_id", type text}, {"replay_started_at", type datetime}, {"is_replay_end_return", Int64.Type}}, "en-US" )
 				in
 				    Typed
+

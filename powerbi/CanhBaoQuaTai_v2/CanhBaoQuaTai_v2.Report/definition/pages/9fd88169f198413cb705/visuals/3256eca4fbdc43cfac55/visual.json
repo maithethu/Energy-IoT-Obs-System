@@ -3,7 +3,7 @@
   "name": "3256eca4fbdc43cfac55",
   "position": {
     "x": 16,
-    "y": 8,
+    "y": 36,
     "z": 1000,
     "height": 96,
     "width": 306,
@@ -86,7 +86,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'Lỗi cảm biến (đáp án)'"
+                  "Value": "'Lỗi cảm biến '"
                 }
               }
             },

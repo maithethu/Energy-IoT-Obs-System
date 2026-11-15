@@ -238,6 +238,41 @@ table live_alert
 		summarizeBy: none
 		sourceColumn: is_unmatched
 
+	column replay_id
+		dataType: int64
+		formatString: 0
+		lineageTag: 8cb55289-0541-40cf-8ad2-d9759e650e29
+		summarizeBy: none
+		sourceColumn: replay_id
+
+	column replay_event_id
+		dataType: string
+		lineageTag: 7a2b90d5-37c0-47d8-a817-c87c14ef191b
+		summarizeBy: none
+		sourceColumn: replay_event_id
+
+	column replay_started_at
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn
+		lineageTag: d5f6b4d8-0c2a-41b1-a8b8-43fdcdb4ba04
+		summarizeBy: none
+		sourceColumn: replay_started_at
+
+		annotation UnderlyingDateTimeDataType = DateTime
+
+	column close_reason
+		dataType: string
+		lineageTag: 6b310613-6455-49e3-8314-5705b43106b6
+		summarizeBy: none
+		sourceColumn: close_reason
+
+	column is_closed_by_replay_end
+		dataType: int64
+		formatString: 0
+		lineageTag: 04b98767-d5f4-4ded-b4d3-cff59f73e60c
+		summarizeBy: none
+		sourceColumn: is_closed_by_replay_end
+
 	partition live_alert = m
 		mode: import
 		source =
@@ -245,6 +280,7 @@ table live_alert
 				    Db = PostgreSQL.Database ( PgServer, DbLive ),
 				    Source = Db{[Schema = "gold", Item = "fact_alert"]}[Data],
 				    Run = Table.SelectRows ( Source, each [run_id] = "LIVE" ),
-				    Typed = Table.TransformColumnTypes ( Run, {{"alert_id", Int64.Type}, {"run_id", type text}, {"station_id", type text}, {"alert_type", type text}, {"severity", type text}, {"trigger_rule", type text}, {"status", type text}, {"severity_rank", Int64.Type}, {"opened_ts", type datetime}, {"escalated_ts", type datetime}, {"resolved_ts", type datetime}, {"acked_ts", type datetime}, {"action_ts", type datetime}, {"date", type date}, {"year_month", type text}, {"open_hour", Int64.Type}, {"duration_min", type number}, {"peak_load_pct", type number}, {"received_load", type number}, {"opened_while_receiving", Int64.Type}, {"acked_by", type text}, {"verdict", type text}, {"opened_at_local", type datetime}, {"real_date", type date}, {"handle_min", type number}, {"deadline_min", Int64.Type}, {"is_handled", Int64.Type}, {"is_on_time", Int64.Type}, {"is_late", Int64.Type}, {"is_missed", Int64.Type}, {"is_false_alarm_verdict", Int64.Type}, {"matched_events", type text}, {"is_unmatched", Int64.Type}}, "en-US" )
+				    Typed = Table.TransformColumnTypes ( Run, {{"alert_id", Int64.Type}, {"run_id", type text}, {"station_id", type text}, {"alert_type", type text}, {"severity", type text}, {"trigger_rule", type text}, {"status", type text}, {"severity_rank", Int64.Type}, {"opened_ts", type datetime}, {"escalated_ts", type datetime}, {"resolved_ts", type datetime}, {"acked_ts", type datetime}, {"action_ts", type datetime}, {"date", type date}, {"year_month", type text}, {"open_hour", Int64.Type}, {"duration_min", type number}, {"peak_load_pct", type number}, {"received_load", type number}, {"opened_while_receiving", Int64.Type}, {"acked_by", type text}, {"verdict", type text}, {"opened_at_local", type datetime}, {"real_date", type date}, {"handle_min", type number}, {"deadline_min", Int64.Type}, {"is_handled", Int64.Type}, {"is_on_time", Int64.Type}, {"is_late", Int64.Type}, {"is_missed", Int64.Type}, {"is_false_alarm_verdict", Int64.Type}, {"matched_events", type text}, {"is_unmatched", Int64.Type}, {"replay_id", Int64.Type}, {"replay_event_id", type text}, {"replay_started_at", type datetime}, {"close_reason", type text}, {"is_closed_by_replay_end", Int64.Type}}, "en-US" )
 				in
 				    Typed
+

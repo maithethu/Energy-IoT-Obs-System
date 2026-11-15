@@ -102,3 +102,6 @@ table dim_station
 				    Typed = Table.TransformColumnTypes ( Source, {{"station_id", type text}, {"station_name", type text}, {"source", type text}, {"data_origin", type text}, {"importance", Int64.Type}, {"neighbor_station_id", type text}, {"neighbor_station_name", type text}, {"rated_load", type number}, {"k", type number}, {"p99_sh", type number}, {"yellow_pct", Int64.Type}, {"red_pct", Int64.Type}, {"close_pct", Int64.Type}, {"has_priority_customer", Int64.Type}}, "en-US" )
 				in
 				    Typed
+
+	annotation PBI_ResultType = Table
+

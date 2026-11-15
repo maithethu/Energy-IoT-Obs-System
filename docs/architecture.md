@@ -107,12 +107,23 @@ Bảng trong `db/init/001_schema.sql`; nạp CSV trong `002_load_data.sql`; view
 - Chuyển tải có tác dụng từ mốc dữ liệu kế tiếp. Cảnh báo tự đóng khi tải mô phỏng < 85% hai lần.
 - **Chuyển tải quá hạn:** còn hiệu lực ≥ 2 giờ dữ liệu (tải đo vẫn ≥ 90%) → cờ đỏ ở ô trạm, trang trạm và báo cáo.
 - **Không ai xử lý:** cảnh báo giữ nguyên tới khi dữ liệu trở lại bình thường. Đỏ tự đóng mà không chuyển tải, không báo giả → **bị bỏ lỡ**. Chuyển tải sau 30 phút → **trễ**.
-- **Kiểm thử:** `scripts/replay_event.sh EV029` (×20) và `scripts/simulate_operator.py` (giả lập đúng hạn / trễ / bỏ qua / báo giả bằng chính hàm ghi của dashboard).
+- **Kiểm thử / demo:** `scripts/prepare_demo.sh` (chuẩn bị một lần) rồi `scripts/replay_event.sh EV031` và `EV033` (×20, trước sự cố 1 giờ) và `scripts/simulate_operator.py` (giả lập đúng hạn / trễ / bỏ qua / báo giả bằng chính hàm ghi của dashboard).
 
 | Run | DB | Người trực | Dùng cho |
 |---|---|---|---|
 | `LIVE` | `energy` | Có (Streamlit) | Vận hành, Power BI trang 3–4 |
 | `HISTORY` | `energy_history` | Không (mọi Đỏ thành "bỏ lỡ") | Power BI trang 1, 2, 5 |
+
+### Lần phát lại và lịch sử (v2.1)
+- Mỗi lần chạy producer là một dòng `replay_session` (mã sự cố, tốc độ, khoảng dữ liệu, giờ bắt đầu / kết thúc). Cảnh báo LIVE ghi `replay_id`.
+- `sql/reset_replay.sql` **chỉ xóa** `raw`, `cleaned` và checkpoint detector. Trước khi xóa, nó đóng cảnh báo còn mở (`close_reason = 'REPLAY_END'`, không tính là bỏ lỡ) và trả chuyển tải còn hiệu lực (`return_reason = 'REPLAY_END'`). Lịch sử cảnh báo và thao tác được giữ cho Power BI.
+- `v_load_sim` của LIVE chỉ áp chuyển tải của lần phát hiện tại.
+
+## 3b. Mô hình khi triển khai thật
+- Bản demo dùng 2 DB (`energy` cho diễn tập, `energy_history` cho 8 tháng lịch sử) vì dữ liệu là phát lại.
+- Triển khai thật: **một kho dữ liệu trung tâm** nhận số đo thật từ trạm (thay producer); **Streamlit và Power BI cùng đọc kho này**.
+- Streamlit: màn hình vận hành, làm mới mỗi 5 giây. Power BI: báo cáo phân tích, **làm mới định kỳ** (lịch Refresh trên Power BI Service qua gateway, ví dụ mỗi giờ / mỗi ca) – **không phải streaming liên tục**.
+
 
 ## 4. Luồng xử lý một bản ghi
 1. Producer ghi mốc `ts` vào `raw` (`ingested_at` = giờ ghi).

@@ -48,3 +48,4 @@ table dim_customer_group
 				    Typed = Table.TransformColumnTypes ( Source, {{"group_id", type text}, {"station_id", type text}, {"group_name", type text}, {"customer_type", type text}, {"load_share_pct", type number}, {"is_priority", Int64.Type}}, "en-US" )
 				in
 				    Typed
+

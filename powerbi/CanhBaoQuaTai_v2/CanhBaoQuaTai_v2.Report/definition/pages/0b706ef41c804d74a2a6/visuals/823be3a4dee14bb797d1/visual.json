@@ -3,7 +3,7 @@
   "name": "823be3a4dee14bb797d1",
   "position": {
     "x": 16,
-    "y": 416,
+    "y": 444,
     "z": 8000,
     "height": 296,
     "width": 1248,
@@ -32,24 +32,6 @@
             }
           ]
         },
-        "Y": {
-          "projections": [
-            {
-              "field": {
-                "Measure": {
-                  "Expression": {
-                    "SourceRef": {
-                      "Entity": "_Measures"
-                    }
-                  },
-                  "Property": "Tải TB (%)"
-                }
-              },
-              "queryRef": "_Measures.Tải TB (%)",
-              "nativeQueryRef": "Tải TB (%)"
-            }
-          ]
-        },
         "Series": {
           "projections": [
             {
@@ -67,10 +49,27 @@
               "nativeQueryRef": "station_name"
             }
           ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Measures"
+                    }
+                  },
+                  "Property": "Tải TB (%)"
+                }
+              },
+              "queryRef": "_Measures.Tải TB (%)",
+              "nativeQueryRef": "Tải TB (%)"
+            }
+          ]
         }
       }
     },
-    "objects": {},
     "visualContainerObjects": {
       "title": [
         {

@@ -10,14 +10,17 @@ producer.py - Phát lại scenario_data.csv vào bảng raw như cảm biến g�
     x1 = đúng thời gian thật, x20 = 45 giây / mốc (tốc độ demo), x60 = 15 giây / mốc, 0 = hết tốc độ.
 - --start: bắt đầu phát từ ngày/giờ này (mặc định: dòng đầu tiên của CSV).
 - --days / --end: dừng sau N ngày / trước mốc --end (để phát đúng 1 ngày khi kiểm tra).
-- --event EVxxx: phát lại đúng một sự cố trong data/event_label.csv, từ t_start − 2 giờ đến
-  t_end + 2 giờ (chỉ dùng t_start / t_end để chọn khoảng; detector không đọc đáp án).
+- --event EVxxx: phát lại đúng một sự cố trong data/event_label.csv, từ t_start − --before-hours
+  (mặc định 2; demo dùng 1 – vẫn đủ 4 bản ghi để tính tốc độ) đến t_end + 2 giờ
+  (chỉ dùng t_start / t_end để chọn khoảng; detector không đọc đáp án).
+- Mỗi lần chạy tạo một dòng replay_session (mã sự cố, tốc độ, khoảng dữ liệu, giờ bắt đầu) và ghi ended_at
+  khi xong; detector gắn replay_id này vào cảnh báo LIVE (sped.md §9 R3).
 - KHÔNG dừng khi có cảnh báo Đỏ: dữ liệu luôn chạy tiếp như lưới điện thật (sped.md §4).
 
 Ví dụ:
     python producer/producer.py --speed 60 --start 2017-11-01
     python producer/producer.py --speed 0 --start 2017-11-01 --days 1
-    python producer/producer.py --event EV029 --speed 20
+    python producer/producer.py --event EV031 --speed 20 --before-hours 1
 """
 import argparse
 import csv
@@ -28,7 +31,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 INTERVAL_SEC = 15 * 60  # chu kỳ lấy mẫu của dữ liệu: 15 phút
-EVENT_MARGIN = timedelta(hours=2)
+EVENT_MARGIN = timedelta(hours=2)        # khoảng đệm SAU sự cố
+SESSION_START_SQL = ("INSERT INTO replay_session (event_id, speed, data_from, data_to) "
+                     "VALUES (%s, %s, %s, %s) RETURNING replay_id")
+SESSION_END_SQL = "UPDATE replay_session SET ended_at = now() WHERE replay_id = %s"
 
 COLUMNS = ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"]
 
@@ -79,7 +85,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--start", type=parse_dt, default=None,
                    help="bắt đầu phát từ ngày này (mặc định: đầu file)")
     p.add_argument("--event", default=None,
-                   help="phát lại một sự cố của event_label.csv (vd EV029): t_start − 2h → t_end + 2h")
+                   help="phát lại một sự cố của event_label.csv (vd EV031): t_start − --before-hours → t_end + 2h")
+    p.add_argument("--before-hours", type=float, default=2.0,
+                   help="với --event: phát trước t_start bao nhiêu giờ (mặc định 2; demo 1)")
     p.add_argument("--labels", type=Path, default=repo_root / "data" / "event_label.csv",
                    help="file đáp án dùng cho --event (mặc định: data/event_label.csv)")
     group = p.add_mutually_exclusive_group()
@@ -113,12 +121,12 @@ def load_batches(path: Path, start, end):
     return [(ts, sorted(by_ts[ts], key=lambda x: x[0])) for ts in sorted(by_ts)]
 
 
-def event_window(path: Path, event_id: str) -> tuple[datetime, datetime]:
-    """[t_start − 2h, t_end + 2h] của một sự cố (mốc --end không gồm, nên cộng thêm 15 phút)."""
+def event_window(path: Path, event_id: str, before: timedelta) -> tuple[datetime, datetime]:
+    """[t_start − before, t_end + 2h] của một sự cố (mốc --end không gồm, nên cộng thêm 15 phút)."""
     with path.open(newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             if row["event_id"] == event_id:
-                start = datetime.fromisoformat(row["t_start"]) - EVENT_MARGIN
+                start = datetime.fromisoformat(row["t_start"]) - before
                 end = datetime.fromisoformat(row["t_end"]) + EVENT_MARGIN + timedelta(seconds=INTERVAL_SEC)
                 print(f"Sự cố {event_id}: {row['station_id']} {row['type']} {row['detail']} "
                       f"{row['t_start']} → {row['t_end']}", flush=True)
@@ -134,7 +142,9 @@ def main() -> int:
     if args.event:
         if start or end or args.days is not None:
             sys.exit("--event không dùng chung với --start / --end / --days")
-        start, end = event_window(args.labels, args.event)
+        if args.before_hours < 1:
+            sys.exit("--before-hours phải ≥ 1 (detector cần 4 bản ghi để tính tốc độ)")
+        start, end = event_window(args.labels, args.event, timedelta(hours=args.before_hours))
     if args.days is not None:
         if start is None:
             # --days tính từ dòng đầu của file; xác định sau khi đọc
@@ -181,6 +191,10 @@ def main() -> int:
     done_ts = 0
     pending = 0
     cur = conn.cursor()
+    cur.execute(SESSION_START_SQL, (args.event, args.speed, first_ts, last_ts))
+    replay_id = cur.fetchone()[0]
+    conn.commit()
+    print(f"Lần phát replay_id={replay_id}", flush=True)
     try:
         for i, (ts, rows) in enumerate(batches):
             if args.speed > 0:
@@ -201,6 +215,8 @@ def main() -> int:
                 conn.commit()
                 pending = 0
                 print(f"[{ts}] đã phát {done_ts}/{len(batches)} mốc | đã ghi {sent} dòng", flush=True)
+        conn.commit()
+        cur.execute(SESSION_END_SQL, (replay_id,))
         conn.commit()
     except KeyboardInterrupt:
         conn.rollback()  # mốc đang ghi dở bị hủy; các mốc đã commit vẫn còn

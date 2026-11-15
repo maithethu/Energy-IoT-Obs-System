@@ -103,6 +103,10 @@ SELECT q.alert_id, q.run_id, q.station_id, q.alert_type, q.severity, q.trigger_r
        COALESCE(q.is_late, false)::int      AS is_late,
        q.is_missed::int                     AS is_missed,
        (q.verdict = 'FALSE_ALARM')::int     AS is_false_alarm_verdict,
+       -- lần phát (run LIVE, sped.md §9 R3): mã sự cố + thời điểm bắt đầu phát
+       q.replay_id, rs.event_id AS replay_event_id,
+       rs.started_at AT TIME ZONE 'Asia/Ho_Chi_Minh' AS replay_started_at,
+       q.close_reason, (q.close_reason = 'REPLAY_END')::int AS is_closed_by_replay_end,
        -- đối chiếu đáp án
        (SELECT string_agg(e.event_id, ',' ORDER BY e.event_id) FROM eval.event_label e
          WHERE e.station_id = q.station_id AND e.type = q.alert_type
@@ -112,7 +116,8 @@ SELECT q.alert_id, q.run_id, q.station_id, q.alert_type, q.severity, q.trigger_r
          WHERE e.station_id = q.station_id AND e.type = q.alert_type
            AND q.opened_ts <= e.t_end + INTERVAL '1 hour'
            AND (q.resolved_ts IS NULL OR q.resolved_ts >= e.t_start)))::int AS is_unmatched
-FROM v_alert_queue q;
+FROM v_alert_queue q
+LEFT JOIN replay_session rs ON rs.replay_id = q.replay_id;
 
 -- ---------------------------------------------------------------------
 -- 4. CHUYỂN TẢI (LIVE) – 1 dòng / lần chuyển
@@ -128,16 +133,23 @@ SELECT t.action_id, t.alert_id, t.run_id, t.source_station, t.target_station,
        t.is_overdue::int                  AS is_overdue,
        (t.effective_to_ts IS NULL)::int   AS is_active,
        t.done_by,
+       a.replay_id, rs.event_id AS replay_event_id,
+       rs.started_at AT TIME ZONE 'Asia/Ho_Chi_Minh' AS replay_started_at,
+       (t.return_reason = 'REPLAY_END')::int AS is_replay_end_return,
        (SELECT max(CASE r.severity WHEN 'RED' THEN 2 WHEN 'YELLOW' THEN 1 ELSE 0 END)
           FROM fact_alert r
-         WHERE r.run_id = t.run_id AND r.station_id = t.target_station AND r.alert_type = 'OVERLOAD'
+         WHERE r.run_id = t.run_id AND r.replay_id IS NOT DISTINCT FROM a.replay_id
+           AND r.station_id = t.target_station AND r.alert_type = 'OVERLOAD'
            AND r.opened_ts > t.effective_from_ts
            AND (t.effective_to_ts IS NULL OR r.opened_ts <= t.effective_to_ts)) AS receiver_level,
        COALESCE((SELECT bool_or(true) FROM fact_alert r
-                  WHERE r.run_id = t.run_id AND r.station_id = t.target_station AND r.alert_type = 'OVERLOAD'
+                  WHERE r.run_id = t.run_id AND r.replay_id IS NOT DISTINCT FROM a.replay_id
+           AND r.station_id = t.target_station AND r.alert_type = 'OVERLOAD'
                     AND r.opened_ts > t.effective_from_ts
                     AND (t.effective_to_ts IS NULL OR r.opened_ts <= t.effective_to_ts)), false)::int AS receiver_pushed
-FROM v_transfer_status t;
+FROM v_transfer_status t
+JOIN fact_alert a ON a.alert_id = t.alert_id
+LEFT JOIN replay_session rs ON rs.replay_id = a.replay_id;
 
 -- ---------------------------------------------------------------------
 -- 5. THIẾT BỊ ĐO – lỗi cảm biến trong đáp án + cảnh báo SENSOR của detector

@@ -10,6 +10,7 @@ Kế hoạch cho từng cảnh báo Đỏ MỚI (theo thứ tự lên Đỏ, l�
     ignore : không làm gì → cảnh báo tự đóng khi tải về bình thường → "bị bỏ lỡ"
     false  : bấm "Báo giả" sau --ontime-min phút dữ liệu
 Vàng: --yellow follow (mặc định) bấm "Theo dõi" sau --yellow-min phút dữ liệu (mặc định 15); ignore = bỏ qua.
+Cảm biến: --sensor maintenance (mặc định) bấm "Chuyển bảo trì" sau --sensor-min phút dữ liệu kể từ lúc mở (mặc định 15).
 Dừng sau --minutes phút giờ thật (mặc định 60) hoặc Ctrl+C.
 """
 
@@ -20,7 +21,7 @@ import logging
 import math
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 sys.path.insert(0, "/app")
 logging.getLogger("streamlit").setLevel(logging.ERROR)
@@ -57,41 +58,50 @@ def main() -> None:
     ap.add_argument("--late-min", type=float, default=45)
     ap.add_argument("--yellow", choices=("follow", "ignore"), default="follow")
     ap.add_argument("--yellow-min", type=float, default=15)
+    ap.add_argument("--sensor", choices=("maintenance", "ignore"), default="maintenance")
+    ap.add_argument("--sensor-min", type=float, default=15)
     ap.add_argument("--minutes", type=float, default=60)
+    ap.add_argument("--operator", default=OPERATOR, help="tên người trực ghi vào DB")
     args = ap.parse_args()
+    operator = args.operator
     plan = [x.strip() for x in args.red_plan.split(",") if x.strip()]
     assigned: dict[int, str] = {}
-    done: set[int] = set()
+    done: set[tuple[int, str]] = set()      # (alert_id, mức): Vàng đã theo dõi rồi lên Đỏ vẫn phải xử lý Đỏ
     stop_at = time.monotonic() + args.minutes * 60
     say(f"Bắt đầu: kế hoạch Đỏ = {plan}, Vàng = {args.yellow}")
     while time.monotonic() < stop_at:
         for a in db.open_queue():
             aid, wait = a["alert_id"], a["data_wait_min"] or 0
-            if aid in done:
+            key = (aid, a["severity"])
+            if key in done:
                 continue
             if a["severity"] == "YELLOW" and a["status"] == "OPEN" and args.yellow == "follow" and wait >= args.yellow_min:
-                if db.follow(aid, OPERATOR):
+                if db.follow(aid, operator):
                     say(f"Theo dõi Vàng #{aid} ({a['station_id']}) sau {wait:.0f} phút dữ liệu")
-                done.add(aid)
+                done.add(key)
+            elif a["severity"] == "SENSOR" and args.sensor == "maintenance" and not a["root_cause"]:
+                if a["data_now_ts"] - a["opened_ts"] >= timedelta(minutes=args.sensor_min):
+                    ok = db.send_to_maintenance(aid, operator)
+                    say(f"Chuyển bảo trì cảnh báo cảm biến #{aid} ({a['station_id']}): {'OK' if ok else 'không ghi được'}")
+                    done.add(key)
             elif a["severity"] == "RED" and a["action_ts"] is None:
                 policy = assigned.setdefault(aid, plan[len(assigned) % len(plan)])
                 if policy == "ignore":
-                    if aid not in done:
-                        say(f"Đỏ #{aid} ({a['station_id']}): kế hoạch IGNORE – không xử lý")
-                        done.add(aid)
+                    say(f"Đỏ #{aid} ({a['station_id']}): kế hoạch IGNORE – không xử lý")
+                    done.add(key)
                     continue
                 due = args.late_min if policy == "late" else args.ontime_min
                 if wait < due:
                     continue
                 if policy == "false":
-                    ok = db.mark_false_alarm(aid, OPERATOR)
+                    ok = db.mark_false_alarm(aid, operator)
                     say(f"Báo giả Đỏ #{aid} sau {wait:.0f} phút dữ liệu: {'OK' if ok else 'không ghi được'}")
                 else:
                     amount, target = suggestion(a["station_id"])
-                    ok = target is not None and db.transfer_load(aid, amount, target, OPERATOR)
+                    ok = target is not None and db.transfer_load(aid, amount, target, operator)
                     say(f"Chuyển tải Đỏ #{aid} ({policy}) {amount:.2f} → {target} sau {wait:.0f} phút dữ liệu: "
                         f"{'OK' if ok else 'không ghi được'}")
-                done.add(aid)
+                done.add(key)
         time.sleep(2)
     say("Hết thời gian giả lập.")
 

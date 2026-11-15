@@ -31,3 +31,6 @@ env/
 .DS_Store
 Thumbs.db
 .claude/
+
+# Power BI Desktop: cache cục bộ của project PBIP
+**/.pbi/

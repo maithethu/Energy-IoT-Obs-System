@@ -98,3 +98,4 @@ table fact_overload_episode
 				    Typed = Table.TransformColumnTypes ( Source, {{"event_id", type text}, {"station_id", type text}, {"detail", type text}, {"t_start", type datetime}, {"t_breach", type datetime}, {"t_end", type datetime}, {"date", type date}, {"year_month", type text}, {"duration_min", type number}, {"peak_load_pct", type number}, {"minutes_ge100", Int64.Type}, {"minutes_ge90", Int64.Type}}, "en-US" )
 				in
 				    Typed
+

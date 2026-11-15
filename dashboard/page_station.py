@@ -25,7 +25,8 @@ LINE_COLORS = {MEASURED: "#111827", SIMULATED: "#1D4ED8"}
 CHART_HEIGHT = 460
 INK_BLACK = "#111827"
 CHART_HOURS = 24
-RETURN_LABEL = {"SAFE": "An toàn (tải đo < 85% hai lần)", "TIMEOUT": "Hết 2 giờ, tải đo < 90%"}
+RETURN_LABEL = {"SAFE": "An toàn (tải đo < 85% hai lần)", "TIMEOUT": "Hết 2 giờ, tải đo < 90%",
+                "REPLAY_END": "Kết thúc lần phát"}
 
 
 def render() -> None:
@@ -73,9 +74,9 @@ def station_block(station: str) -> None:
     station_metrics(latest, p, station)
     common.section(f"Diễn biến tải {CHART_HOURS} giờ gần nhất")
     load_chart_block(station, latest["ts"], p)
-    common.section("Chuyển tải · lịch sử cảnh báo 7 ngày dữ liệu")
-    transfer_table(station)
-    history_table(station, latest["ts"] - timedelta(days=7))
+    with st.expander("Tra cứu: các lần chuyển tải và lịch sử cảnh báo 7 ngày dữ liệu", expanded=False):
+        transfer_table(station)
+        history_table(station, latest["ts"] - timedelta(days=7))
 
 
 # ---------------------------------------------------------------------------
@@ -92,34 +93,32 @@ def ttb_at(station: str, ts: datetime, red_pct: float) -> float | None:
     return (red_pct - now["load_pct_sim"]) / speed * 60
 
 
-def headroom_ink(headroom: float, rated: float) -> str:
-    if headroom < 0:
-        return common.INK["RED"]
-    return common.INK["AMBER"] if headroom < 0.05 * rated else common.INK["GREEN"]
-
-
 def station_metrics(latest: dict, p: dict, station: str) -> None:
-    rated = latest["rated_load"]
+    """Hai câu người trực cần: tải đang bao nhiêu, còn bao lâu tới 100%. Cảm biến lỗi thì nói rõ là không tin số liệu."""
     load, simulated = common.shown_load(latest)
-    s_h = latest["s_h_sim"] if simulated else latest["s_h"]
     stuck = db.open_alert(station, "SENSOR") is not None
     speed = latest["speed_pct_h"]
     ttb = ttb_at(station, latest["ts"], p["red_pct"])
-    headroom = p["yellow_pct"] / 100 * rated - s_h
     measured = common.span(f"{latest['load_pct']:.1f}%", common.load_ink(latest["load_pct"], p))
-    load_note = (f"{common.SIM_TAG} · tải đo {measured}" if simulated else f"S_H {s_h:.2f} / định mức {rated:.2f}")
-    trend_value = f"{common.trend_arrow(speed)} {speed:+.1f} %/giờ" if speed is not None else "—"
-    ttb_note = common.span(f"Còn {ttb:.0f} phút đến {p['red_pct']}%", common.ttb_ink(ttb, p)) if ttb is not None else ""
+    load_note = f"{common.SIM_TAG} · tải đo {measured}" if simulated else "so với định mức của trạm"
+    if ttb is not None:
+        left, left_ink = f"{ttb:.0f} phút", common.ttb_ink(ttb, p)
+    elif load >= p["red_pct"]:
+        left, left_ink = "Đang quá tải", common.INK["RED"]
+    else:
+        left, left_ink = "Không tăng", common.INK["GREEN"]
+    trend = f"Xu hướng 1 giờ {common.trend_arrow(speed)} {speed:+.1f} %/giờ" if speed is not None else ""
     cards = [
-        common.metric_card("Tải", f"{load:.1f}%", common.load_ink(load, p), load_note + common.load_bar(load, p)),
-        common.metric_card("Xu hướng 1 giờ", trend_value, common.trend_ink(speed), ttb_note),
-        common.metric_card(f"Còn dư đến {p['yellow_pct']}%", f"{headroom:.2f}", headroom_ink(headroom, rated),
-                           "Đã vượt ngưỡng Vàng" if headroom < 0 else "Đơn vị S_H"),
-        common.metric_card("Cảm biến", "Kẹt" if stuck else "OK",
-                           common.INK["GRAY"] if stuck else common.INK["GREEN"],
-                           "Không dùng số liệu để kết luận quá tải" if stuck else "Số liệu đang thay đổi bình thường"),
+        common.metric_card("Tải hiện tại", f"{load:.1f}%", common.INK["SENSOR"] if stuck else common.load_ink(load, p),
+                           ("Số đo đứng yên – không tin cậy" if stuck else load_note)
+                           + ("" if stuck else common.load_bar(load, p))),
+        common.metric_card(f"Còn bao lâu tới {p['red_pct']}%", "—" if stuck else left,
+                           common.INK["SENSOR"] if stuck else left_ink, "" if stuck else trend),
     ]
-    for col, card in zip(st.columns(4), cards):
+    if stuck:
+        cards.append(common.metric_card("Cảm biến", "Lỗi (kẹt)", common.INK["SENSOR"],
+                                        "Không dùng số liệu để kết luận quá tải → Chuyển bảo trì"))
+    for col, card in zip(st.columns(len(cards)), cards):
         col.markdown(card, unsafe_allow_html=True)
 
 
@@ -160,7 +159,25 @@ def transfer_rules(station: str, start: datetime) -> list[alt.Chart]:
     return [rule, text]
 
 
-def load_chart(df: pd.DataFrame, p: dict, station: str, lines: dict[str, tuple[float, str]]) -> alt.Chart:
+def sensor_layers(intervals: list[dict], scale: alt.Scale) -> list[alt.Chart]:
+    """Dải xám cho đoạn cảm biến lỗi (số đo đứng yên) kèm nhãn."""
+    if not intervals:
+        return []
+    df = pd.DataFrame([{"x0": i["stuck_from"], "x1": i["stuck_to"], "label": "Cảm biến lỗi"} for i in intervals])
+    band = alt.Chart(df).mark_rect(color=common.COLORS["SENSOR"], opacity=0.28, clip=True).encode(
+        x="x0:T", x2="x1:T")
+    label = alt.Chart(df).mark_text(align="left", dx=4, dy=14, color=common.INK["SENSOR"], fontWeight="bold",
+                                    fontSize=13).encode(x="x0:T", y=alt.value(0), text="label:N")
+    return [band, label]
+
+
+def in_sensor(ts, intervals: list[dict]) -> bool:
+    return any(i["stuck_from"] <= ts <= i["stuck_to"] for i in intervals)
+
+
+def load_chart(df: pd.DataFrame, p: dict, station: str, lines: dict[str, tuple[float, str]],
+               sensor: list[dict] | None = None) -> alt.Chart:
+    sensor = sensor or []
     simulated = bool((df["load_pct_sim"] - df["load_pct"]).abs().max() > 1e-9)
     series = [MEASURED, SIMULATED] if simulated else [MEASURED]
     long = df.melt(id_vars=["ts"], value_vars=["load_pct", "load_pct_sim"] if simulated else ["load_pct"],
@@ -182,9 +199,12 @@ def load_chart(df: pd.DataFrame, p: dict, station: str, lines: dict[str, tuple[f
                         legend=alt.Legend(orient="top", title=None, labelLimit=400, symbolStrokeWidth=4)),
         strokeDash=alt.StrokeDash("Đường:N", scale=alt.Scale(domain=series, range=dash), legend=None),
         strokeWidth=alt.StrokeWidth("Đường:N", scale=alt.Scale(domain=series, range=width), legend=None))
-    operational = df.assign(value=df["load_pct_sim"], Mức=[level_name(v, p) for v in df["load_pct_sim"]])
-    point_scale = alt.Scale(domain=["Bình thường", "≥ ngưỡng đóng", "≥ Vàng", "≥ Đỏ"],
-                            range=[common.INK["GREEN"], common.INK["ORANGE"], common.INK["AMBER"], common.INK["RED"]])
+    operational = df.assign(value=df["load_pct_sim"],
+                            Mức=["Cảm biến lỗi" if in_sensor(t, sensor) else level_name(v, p)
+                                 for t, v in zip(df["ts"], df["load_pct_sim"])])
+    point_scale = alt.Scale(domain=["Bình thường", "≥ ngưỡng đóng", "≥ Vàng", "≥ Đỏ", "Cảm biến lỗi"],
+                            range=[common.INK["GREEN"], common.INK["ORANGE"], common.INK["AMBER"], common.INK["RED"],
+                                   common.COLORS["SENSOR"]])
     points = alt.Chart(operational).mark_point(filled=True, size=70, opacity=1, stroke="white", strokeWidth=1.5,
                                                clip=True).encode(
         x=x, y=alt.Y("value:Q", scale=scale), color=alt.Color("Mức:N", scale=point_scale, legend=alt.Legend(orient="top", title=None)),
@@ -197,7 +217,8 @@ def load_chart(df: pd.DataFrame, p: dict, station: str, lines: dict[str, tuple[f
         y=alt.Y("y:Q", scale=scale), color=alt.Color("c:N", scale=None, legend=None))
     rule_labels = alt.Chart(rule_df).mark_text(align="right", dx=-4, dy=-7, fontSize=12, fontWeight="bold").encode(
         x="ts:T", y=alt.Y("y:Q", scale=scale), text="label:N", color=alt.Color("c:N", scale=None, legend=None))
-    layers = [threshold_bands(p, low, top, scale), rules, line, points, *transfer_rules(station, df["ts"].min())]
+    layers = [threshold_bands(p, low, top, scale), *sensor_layers(sensor, scale), rules, line, points,
+              *transfer_rules(station, df["ts"].min())]
     return (alt.layer(*layers, rule_labels).resolve_scale(color="independent").properties(height=CHART_HEIGHT)
             .configure_axis(labelFontSize=13, titleFontSize=13, labelColor=INK_BLACK, titleColor=INK_BLACK,
                             gridColor="#E5E7EB", domainColor="#9CA3AF", tickColor="#9CA3AF")
@@ -212,13 +233,16 @@ def load_chart_block(station: str, newest: datetime, p: dict) -> None:
     lines = {"close": (p["close_pct"], common.INK["GREEN"]),
              "yellow": (p["yellow_pct"], common.INK["AMBER"]),
              "red": (p["red_pct"], common.INK["RED"])}
-    st.altair_chart(load_chart(df, p, station, lines), width="stretch", theme=None)
-    st.markdown(
+    sensor = db.sensor_intervals(station, df["ts"].min(), df["ts"].max())
+    st.altair_chart(load_chart(df, p, station, lines, sensor), width="stretch", theme=None)
+    with st.expander("Cách đọc biểu đồ", expanded=False):
+        st.markdown(
         f"- **Nét liền đen:** tải đo (dữ liệu thật); khi đang chuyển tải → **nét đứt đen**\n"
         f"- **Nét liền xanh dương (dày):** tải sau chuyển tải (mô phỏng)\n"
         f"- **Điểm màu:** mức tải dùng để vận hành\n"
         f"- **Vạch ngang:** {p['close_pct']}% / {p['yellow_pct']}% / {p['red_pct']}%\n"
         f"- **Vạch dọc:** lúc chuyển / trả tải\n"
+        f"- **Dải xám:** cảm biến lỗi (số đo đứng yên) – không dùng để kết luận quá tải\n"
         f"- **Trục ngang:** giờ dữ liệu")
 
 
@@ -243,6 +267,8 @@ def outcome(alert: dict) -> tuple[str, str]:
     """Kết quả một cảnh báo Đỏ: (nhãn, màu)."""
     if alert["verdict"] == "FALSE_ALARM":
         return "Báo giả", common.INK["GRAY"]
+    if alert.get("close_reason") == "REPLAY_END" and alert["action_ts"] is None:
+        return "Đóng khi kết thúc lần phát", common.INK["SENSOR"]
     if alert["is_missed"]:
         return "Bị bỏ lỡ", common.INK["RED"]
     if alert["action_ts"] is None:

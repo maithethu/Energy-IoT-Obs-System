@@ -3,7 +3,7 @@
   "name": "664b2b19c160490e8bed",
   "position": {
     "x": 16,
-    "y": 112,
+    "y": 140,
     "z": 7000,
     "height": 290,
     "width": 620,
@@ -52,7 +52,6 @@
         }
       }
     },
-    "objects": {},
     "visualContainerObjects": {
       "title": [
         {

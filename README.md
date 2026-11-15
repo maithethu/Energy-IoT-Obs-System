@@ -42,30 +42,69 @@ docker compose up -d --build                  # dựng lại dashboard mỗi khi
 P="docker compose exec -T timescaledb psql -U energy -d energy -v ON_ERROR_STOP=1 -q"
 $P < sql/elt.sql                              # chỉ khi DB mới
 pip install -r detector/requirements.txt      # psycopg 3 (máy không cài được: dùng USE_DOCKER=1, mục 3)
+scripts/prepare_demo.sh                       # chuẩn bị dữ liệu demo (mục 3.1)
 ```
 
-**Nâng cấp DB đã có từ bản cũ (v1)** – không cần xóa volume:
+**Nâng cấp DB đã có từ bản cũ** – không cần xóa volume (`scripts/prepare_demo.sh` làm tự động):
 
 ```bash
-$P < sql/migrate_v2.sql && $P < db/init/003_views.sql && $P < sql/elt.sql && $P < sql/reset_replay.sql
+$P < sql/migrate_v2.sql && $P < sql/migrate_v21.sql && $P < db/init/003_views.sql && $P < sql/elt.sql
 ```
 
 Kiểm tra: `curl -s localhost:8501/_stcore/health` trả về `ok`. `param_threshold` có 4 dòng, `eval.event_label` có **29** dòng (9 quá tải + 20 lỗi cảm biến).
 
-## 3. Chạy demo
+## 3. Chạy demo (2 đoạn: EV031 và EV033)
 
-Phát lại một **sự cố quá tải thật** của Trạm Y ở tốc độ demo **×20** (15 phút dữ liệu = 45 giây thật):
+Tốc độ **×20** (15 phút dữ liệu = 45 giây thật), **phát trước sự cố 1 giờ** (đủ 4 bản ghi để detector tính tốc độ).
+
+### 3.1 Chuẩn bị – chạy MỘT lần trước buổi demo
 
 ```bash
-scripts/replay_event.sh EV029                # tốc độ mặc định 20
-USE_DOCKER=1 scripts/replay_event.sh EV029   # chạy producer / detector trong container python
+scripts/prepare_demo.sh
 ```
 
-| Sự cố | Quá tải (t_start → t_end) | Dữ liệu được phát (±2 giờ) | Thời lượng ở ×20 |
+Script (chạy lại an toàn) lần lượt: kiểm tra container, nâng DB lên v2.1 → build lại dashboard → dựng DB `energy_history` (8 tháng, run HISTORY) → cài lớp gold cho Power BI → phát lại 4 sự cố khác (EV028, EV022, EV035, EV036) kèm **giả lập người trực** (đúng hạn / trễ / bỏ qua → bỏ lỡ / báo giả) để trang 3–4 của Power BI có sẵn dữ liệu. Mất khoảng 20 phút. Sau đó mở Power BI và **Refresh** một lần để kiểm tra.
+
+### 3.2 Đoạn 1 – EV031: quá tải Trạm Y (~15 phút)
+
+```bash
+scripts/replay_event.sh EV031                # máy không cài được psycopg: USE_DOCKER=1 scripts/replay_event.sh EV031
+```
+
+Mở **http://localhost:8501**:
+
+| Phút (×20) | Giờ dữ liệu | Diễn biến | Người trực |
 |---|---|---|---|
-| **EV029** (khuyến nghị) | 04/02/2018 18:30 → 05/02 21:30 | 04/02 16:30 → 05/02 23:30 | ~94 phút |
-| EV031 | 10/02/2018 19:45 → 10/02 21:30 | 10/02 17:45 → 10/02 23:30 | ~18 phút |
-| EV023 | 12/12/2017 07:00 → 12/12 07:45 | 12/12 05:00 → 12/12 09:45 | ~15 phút |
+| ~3 | 10/02 19:45 | Trạm Y lên **Vàng** (tải 91,5%) | **Điều hành** → **Theo dõi** (trong 60′ dữ liệu ≈ 3′ thật) |
+| ~7 | 21:00 | Trạm Y lên **Đỏ**: tải **nhảy 93% → 105%** trong một mốc 15 phút | **Xử lý** → trang Chi tiết trạm (trạm dự phòng Trạm 3 ở trên đầu) |
+| | | Khung chuyển tải: lượng điền sẵn (~5–7), sức nhận của Trạm 3 | **Xác nhận chuyển tải** trong **30′ dữ liệu ≈ 1′30″ thật** |
+| các mốc sau | 21:15 → 22:00 | Tải mô phỏng Trạm Y (nét xanh dương) xuống dưới 85%, Trạm 3 tăng tương ứng | Theo dõi biểu đồ, ghi nguyên nhân |
+| | ~22:00 | Tải mô phỏng < 85% hai lần → **cảnh báo đóng** | Xem thẻ **Kết quả xử lý**: đúng hạn |
+| ~12–13 | ~23:00 | Tải **đo** < 85% hai lần → **trả tải an toàn (SAFE)** | — |
+
+> Vì sao Vàng ở 19:45 chứ không 19:15: phát trước 1 giờ (từ 18:45) thì lúc 19:15 detector chưa đủ 4 bản ghi để tính tốc độ tăng tải, nên Vàng mở theo ngưỡng 90% (19:45). Đỏ 21:00 là cú nhảy đột ngột – không luật dự báo nào báo trước được; tín hiệu sớm của đoạn này chính là **Vàng** (~1 giờ 15 phút trước).
+
+### 3.3 Đoạn 2 – EV033: cảm biến kẹt Trạm Y (~13 phút)
+
+```bash
+scripts/replay_event.sh EV033
+```
+
+| Phút (×20) | Giờ dữ liệu | Diễn biến | Người trực |
+|---|---|---|---|
+| ~5 | 23/02 04:15 | Số đo Trạm Y đứng yên 4 bản ghi → cảnh báo **Cảm biến**: ô trạm và biểu đồ chuyển **xám** ("số liệu không tin cậy") | **Điều hành** → **Chuyển bảo trì** |
+| | 04:45 | Số đo thay đổi lại → cảnh báo tự đóng | — |
+
+Chạy EV033 **không xóa** kết quả EV031: reset chỉ xóa dữ liệu cảm biến và trạng thái detector; cảnh báo và thao tác được giữ, gắn mã sự cố + thời điểm phát (`replay_session`). Cảnh báo còn mở của lần trước được đóng với lý do `REPLAY_END` (không tính là bỏ lỡ).
+
+### 3.4 Power BI (~5 phút)
+
+Mở `powerbi/CanhBaoQuaTai_v2/CanhBaoQuaTai_v2.pbip` → **Refresh** → trang 3–4 có kết quả EV031, EV033 (cột mã sự cố) cùng các lần làm giàu dữ liệu.
+
+| Trang | Nguồn |
+|---|---|
+| 1 · Lưới điện, 2 · Sự cố, 5 · Cảm biến | **Dữ liệu lịch sử 8 tháng đã nạp sẵn** (DB `energy_history`) |
+| 3 · Vận hành, 4 · Chuyển tải | **Dữ liệu diễn tập thời gian thực** (DB `energy`, các lần phát lại có người trực) |
 
 Thời hạn xử lý theo **giờ dữ liệu**:
 
@@ -74,23 +113,13 @@ Thời hạn xử lý theo **giờ dữ liệu**:
 | Đỏ | **Xác nhận chuyển tải** (hoặc **Báo giả**) | ≤ 30 phút kể từ lúc lên Đỏ | ≈ 1 phút 30 giây thật |
 | Vàng | **Theo dõi** | ≤ 60 phút kể từ lúc mở | ≈ 3 phút thật |
 
-Mở **http://localhost:8501** và xử lý (EV029):
+Không ai xử lý Đỏ → cảnh báo giữ nguyên tới khi tải tự giảm → **bị bỏ lỡ**. Chuyển tải ≥ 2 giờ mà tải đo vẫn ≥ 90% → **chuyển tải quá hạn**; ≥ 2 giờ và < 90% → trả tải **TIMEOUT**.
 
-| Giờ dữ liệu | Diễn biến | Người trực |
-|---|---|---|
-| 04/02 ~18:30 | Trạm Y lên Đỏ (dữ liệu vẫn chạy) | **Điều hành** → **Xử lý** → trang Chi tiết trạm |
-| | Một khung chuyển tải: lượng điền sẵn, trạng thái trạm nhận | **Xác nhận chuyển tải** (tự ghi quá tải thật) hoặc **Báo giả** |
-| các mốc sau | Tải mô phỏng Trạm Y giảm, Trạm 3 tăng X | Ghi nguyên nhân; **Chuyển thêm** nếu vẫn ≥ 90% |
-| sau 2 giờ | Tải đo vẫn ≥ 90% → **Chuyển tải quá hạn** | Theo dõi / chuyển thêm |
-| | Tải đo < 85% hai lần → trả tải **SAFE**; hoặc đã ≥ 2 giờ và < 90% → trả tải **TIMEOUT** | — |
-| | Không ai xử lý Đỏ → cảnh báo giữ nguyên tới khi tải tự giảm → **bị bỏ lỡ** | — |
+### 3.5 Mô hình khi triển khai thật
 
-Giả lập người trực (gọi đúng hàm ghi của dashboard, chạy trong container dashboard):
-
-```bash
-docker cp scripts/simulate_operator.py energy-dashboard:/app/
-docker exec energy-dashboard python /app/simulate_operator.py --red-plan ontime,late,ignore,false
-```
+- **Một kho dữ liệu trung tâm** (TimescaleDB) nhận số đo thật từ trạm thay cho producer phát lại; **Streamlit và Power BI cùng đọc kho này** (không có hai nguồn riêng như bản demo `energy` / `energy_history`).
+- Streamlit là màn hình vận hành, tự làm mới mỗi 5 giây.
+- Power BI là báo cáo phân tích, **làm mới định kỳ** (lịch Refresh trên Power BI Service qua gateway, ví dụ mỗi giờ / mỗi ca) – **không phải kết nối streaming liên tục**.
 
 ## 4. Dashboard (Streamlit)
 
@@ -98,8 +127,8 @@ Ba trang, tự làm mới mỗi 5 giây. Chỉ có một người trực là "Ng
 
 | Trang | Nội dung |
 |---|---|
-| **Điều hành** | 4 ô trạm (% tải, xu hướng, "Còn X phút", cờ **chuyển tải quá hạn**). **Hàng đợi** xếp: đang mở → mức (Đỏ > Vàng > Cảm biến) → TTB (khung 10 phút) → khách hàng ưu tiên → % tải. Cột "đã chờ X/30 (hoặc /60) phút dữ liệu"; quá hạn nhấp nháy. Nút: Đỏ **Xử lý**, Vàng **Theo dõi**, Cảm biến **Chuyển bảo trì** |
-| **Chi tiết trạm** | **Trạm dự phòng ở trên đầu.** Khi có Đỏ: khung chuyển tải duy nhất + Báo giả, đồng hồ giờ dữ liệu /30′. Khi có Vàng: nút Theo dõi, đồng hồ /60′. Số liệu hiện tại, biểu đồ 24 giờ (tải đo / tải mô phỏng), chuyển tải (lý do trả, quá hạn), lịch sử 7 ngày |
+| **Điều hành** | 4 ô trạm (% tải, xu hướng, "Còn X phút", cờ **chuyển tải quá hạn**; ô chuyển **xám** khi cảm biến lỗi). **Hàng đợi** xếp: đang mở → mức (Đỏ > Vàng > Cảm biến) → TTB (khung 10 phút) → khách hàng ưu tiên → % tải. Cột "đã chờ X/30 (hoặc /60) phút dữ liệu"; quá hạn nhấp nháy. Nút: Đỏ **Xử lý**, Vàng **Theo dõi**, Cảm biến **Chuyển bảo trì** |
+| **Chi tiết trạm** | **Trạm dự phòng ở trên đầu.** Cảm biến lỗi: thẻ số liệu và dải trên biểu đồ chuyển **xám**. Khi có Đỏ: khung chuyển tải duy nhất + Báo giả, đồng hồ giờ dữ liệu /30′. Khi có Vàng: nút Theo dõi, đồng hồ /60′. Số liệu hiện tại, biểu đồ 24 giờ (tải đo / tải mô phỏng), chuyển tải (lý do trả, quá hạn), lịch sử 7 ngày |
 | **Báo cáo quản trị** | Đỏ chuyển tải đúng hạn, Đỏ bị bỏ lỡ, báo giả / tổng Đỏ, Vàng theo dõi đúng hạn; số lần / lượng chuyển tải, trả an toàn, trả do hết giờ, quá hạn; cảnh báo theo trạm × mức; bảng kết quả Đỏ |
 
 Chuyển tải:

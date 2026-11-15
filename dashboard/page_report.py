@@ -15,13 +15,13 @@ import common
 import db
 
 RED_SQL = """
-SELECT q.alert_id, q.station_name, q.status, q.escalated_ts, q.resolved_ts, q.peak_load_pct, q.verdict,
-       q.action_ts, q.data_wait_min, q.is_missed, q.is_late, q.is_overdue, q.acked_by,
+SELECT q.alert_id, rs.event_id, q.station_name, q.status, q.escalated_ts, q.resolved_ts, q.peak_load_pct, q.verdict,
+       q.action_ts, q.data_wait_min, q.is_missed, q.is_late, q.is_overdue, q.acked_by, q.close_reason,
        (SELECT sum(x.amount) FROM fact_alert_action x WHERE x.alert_id = q.alert_id) AS moved,
        (SELECT string_agg(DISTINCT x.return_reason, ', ') FROM fact_alert_action x WHERE x.alert_id = q.alert_id) AS returned,
        q.root_cause
-  FROM v_alert_queue q
- WHERE q.run_id = %s AND q.severity = 'RED' ORDER BY q.escalated_ts DESC"""
+  FROM v_alert_queue q LEFT JOIN replay_session rs ON rs.replay_id = q.replay_id
+ WHERE q.run_id = %s AND q.severity = 'RED' ORDER BY q.replay_id DESC NULLS LAST, q.escalated_ts DESC"""
 KPI_SQL = """
 SELECT count(*) FILTER (WHERE severity = 'RED')                                                   AS red_total,
        count(*) FILTER (WHERE severity = 'RED' AND action_ts IS NOT NULL AND NOT is_late)         AS red_on_time,
@@ -46,12 +46,14 @@ SELECT s.station_name, a.severity, count(*) AS n
  WHERE a.run_id = %s GROUP BY s.station_name, a.severity"""
 SEVERITY_ORDER = ["RED", "YELLOW", "SENSOR"]
 STATUS_LABEL = {"OPEN": "Chưa xử lý", "ACK": "Đang theo dõi", "ACTION_TAKEN": "Đã chuyển tải", "RESOLVED": "Đã đóng"}
-RETURN_LABEL = {"SAFE": "An toàn", "TIMEOUT": "Hết 2 giờ", "SAFE, TIMEOUT": "An toàn, hết 2 giờ"}
+RETURN_LABEL = {"SAFE": "An toàn", "TIMEOUT": "Hết 2 giờ", "REPLAY_END": "Kết thúc lần phát"}
 
 
 def red_outcome(row: dict) -> str:
     if row["verdict"] == "FALSE_ALARM":
         return common.span("Báo giả", common.INK["GRAY"])
+    if row["close_reason"] == "REPLAY_END" and row["action_ts"] is None:
+        return common.span("Đóng khi kết thúc lần phát", common.INK["SENSOR"])
     if row["is_missed"]:
         return common.span("Bị bỏ lỡ", common.INK["RED"])
     if row["action_ts"] is None:
@@ -68,6 +70,7 @@ def handle_text(row: dict) -> str:
 
 RED_COLUMNS = [
     ("alert_id", "#", lambda v, r: f"<b>{v}</b>"),
+    ("event_id", "Lần phát", lambda v, r: v or "—"),
     ("station_name", "Trạm", None),
     ("status", "Trạng thái", lambda v, r: STATUS_LABEL.get(v, v)),
     ("escalated_ts", "Lên Đỏ (giờ dữ liệu)", lambda v, r: common.fmt_ts(v)),
@@ -83,7 +86,7 @@ RED_COLUMNS = [
 
 def red_stripe(row: dict) -> str:
     if row["status"] == "RESOLVED":
-        if row["verdict"] == "FALSE_ALARM":
+        if row["verdict"] == "FALSE_ALARM" or (row["close_reason"] == "REPLAY_END" and row["action_ts"] is None):
             return common.COLORS["SENSOR"]
         return common.COLORS["RED"] if row["is_missed"] or row["is_late"] else common.COLORS["NORMAL"]
     return common.COLORS["RED"]

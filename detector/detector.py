@@ -201,11 +201,12 @@ RETURNING alert_id"""
 INSERT_ALERT_SQL = """
 INSERT INTO fact_alert (run_id, station_id, alert_type, severity, trigger_rule, status,
        opened_ts, escalated_ts, last_ts, resolved_ts, resolved_at, load_pct, peak_load_pct,
-       ttb_min, speed_pct_h, below_close_count, received_load)
+       ttb_min, speed_pct_h, below_close_count, received_load, replay_id)
 VALUES (%(run_id)s, %(station_id)s, %(alert_type)s, %(severity)s, %(trigger_rule)s, %(status)s,
         %(opened_ts)s, %(escalated_ts)s, %(last_ts)s, %(resolved_ts)s,
         CASE WHEN %(status)s = 'RESOLVED' THEN now() END, %(load_pct)s, %(peak_load_pct)s,
-        %(ttb_min)s, %(speed_pct_h)s, %(below_close_count)s, %(received_load)s)
+        %(ttb_min)s, %(speed_pct_h)s, %(below_close_count)s, %(received_load)s,
+        CASE WHEN %(run_id)s = 'LIVE' THEN (SELECT max(replay_id) FROM replay_session) END)
 RETURNING alert_id"""
 
 # s_h = số ĐO (xét cảm biến kẹt); load_pct = tải đo (tính tốc độ);
@@ -301,9 +302,16 @@ def open_detector(cur: Any, args: argparse.Namespace) -> Detector:
     if checkpoint and checkpoint["method"] != METHOD:
         raise SystemExit("Checkpoint của run_id này thuộc phương pháp cũ; hãy chạy sql/reset_replay.sql")
     if not checkpoint:
-        cur.execute("SELECT 1 FROM fact_alert WHERE run_id = %s LIMIT 1", (args.run_id,))
+        # LIVE giữ lịch sử cảnh báo giữa các lần phát (sped §9 R3): chỉ chặn khi một lần phát CÒN ĐANG CHẠY
+        # (replay_session.ended_at rỗng) đã có cảnh báo mà mất checkpoint – chạy tiếp sẽ mở trùng.
+        # Sau reset_replay.sql mọi phiên đã kết thúc → không chặn. HISTORY: chặn khi đã có cảnh báo.
+        cur.execute("""SELECT 1 FROM fact_alert a
+                        WHERE a.run_id = %(run)s
+                          AND (%(run)s <> 'LIVE' OR a.replay_id IN
+                               (SELECT replay_id FROM replay_session WHERE ended_at IS NULL))
+                        LIMIT 1""", {"run": args.run_id})
         if cur.fetchone():
-            raise SystemExit("run_id đã có cảnh báo nhưng thiếu checkpoint; hãy chạy sql/reset_replay.sql")
+            raise SystemExit("Lần phát hiện tại đã có cảnh báo nhưng thiếu checkpoint; hãy chạy sql/reset_replay.sql")
     return Detector(params, checkpoint["state"] if checkpoint else None)
 
 

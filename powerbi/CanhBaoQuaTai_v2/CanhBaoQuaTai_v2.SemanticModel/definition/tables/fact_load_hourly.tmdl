@@ -109,3 +109,4 @@ table fact_load_hourly
 				    Typed = Table.TransformColumnTypes ( Source, {{"hour_ts", type datetime}, {"date", type date}, {"station_id", type text}, {"hour_of_day", Int64.Type}, {"weekday_no", Int64.Type}, {"year_month", type text}, {"avg_load_pct", type number}, {"max_load_pct", type number}, {"avg_ot", type number}, {"max_ot", type number}, {"n_records", Int64.Type}, {"load_band", type text}, {"is_ge90_hour", Int64.Type}, {"is_overload_hour", Int64.Type}}, "en-US" )
 				in
 				    Typed
+

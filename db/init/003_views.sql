@@ -11,6 +11,8 @@ SELECT station_id, max(ts) AS now_ts FROM cleaned GROUP BY station_id;
 
 -- Tải sau xử lý (MÔ PHỎNG): s_h đo − chuyển đi + nhận về, theo từng run_id.
 -- cleaned giữ nguyên số đo thật; detector xét quá tải trên load_pct_sim.
+-- Run LIVE chỉ áp các lần chuyển tải của LẦN PHÁT HIỆN TẠI (replay_id mới nhất, sped.md D12):
+-- cleaned chỉ chứa dữ liệu của lần phát hiện tại, lần chuyển cũ không được trừ vào lần phát mới.
 CREATE VIEW v_load_sim AS
 SELECT r.run_id, c.ts, c.station_id, c.s_h, c.load_pct, c.ot,
        COALESCE(t.out_amt, 0)                                   AS transfer_out,
@@ -26,6 +28,7 @@ LEFT JOIN LATERAL (
     FROM fact_alert_action x
     JOIN fact_alert a USING (alert_id)
     WHERE a.run_id = r.run_id AND x.action_type = 'TRANSFER'
+      AND (r.run_id <> 'LIVE' OR a.replay_id IS NOT DISTINCT FROM (SELECT max(replay_id) FROM replay_session))
       AND (a.station_id = c.station_id OR x.target_station = c.station_id)
       AND c.ts > x.effective_from_ts
       AND (x.effective_to_ts IS NULL OR c.ts <= x.effective_to_ts)
@@ -59,7 +62,7 @@ GROUP BY v.run_id, v.station_id, s.station_name, v.ts, v.s_h, v.load_pct, v.ot,
 --   deadline_min   : Đỏ 30, Vàng 60, Cảm biến không có thời hạn
 --   data_wait_min  : (handled_ts hoặc đồng hồ dữ liệu) − clock_start_ts
 --   is_overdue     : đang mở, chưa xử lý, data_wait_min > deadline_min
---   is_missed      : Đỏ đã đóng, không chuyển tải, không phải báo giả
+--   is_missed      : Đỏ đã đóng, không chuyển tải, không phải báo giả, không phải đóng do kết thúc lần phát
 --   is_late        : Đỏ có chuyển tải nhưng sau 30 phút dữ liệu
 -- Xếp: đang mở trước → mức (Đỏ, Vàng, Cảm biến) → TTB theo khung 10 phút → trạm có khách ưu tiên → tải cao.
 CREATE VIEW v_alert_queue AS
@@ -83,7 +86,8 @@ SELECT q.*,
        (q.status <> 'RESOLVED' AND q.handled_ts IS NULL AND q.deadline_min IS NOT NULL
         AND q.data_now_ts - q.clock_start_ts > make_interval(mins => q.deadline_min)) AS is_overdue,
        (q.severity = 'RED' AND q.status = 'RESOLVED' AND q.action_ts IS NULL
-        AND q.verdict IS DISTINCT FROM 'FALSE_ALARM')                                AS is_missed,
+        AND q.verdict IS DISTINCT FROM 'FALSE_ALARM'
+        AND q.close_reason IS NULL)                                                  AS is_missed,
        (q.severity = 'RED' AND q.action_ts - q.escalated_ts > INTERVAL '30 minutes') AS is_late,
        EXTRACT(EPOCH FROM (q.acked_at - q.opened_at))                                AS response_sec
 FROM q
@@ -96,7 +100,7 @@ ORDER BY (q.status = 'RESOLVED'),                                              -
 -- Trạng thái từng lần chuyển tải (theo giờ dữ liệu của trạm nguồn).
 --   is_overdue: còn hiệu lực và đã chuyển ≥ 2 giờ (detector chưa trả vì tải đo vẫn ≥ 90%)
 CREATE VIEW v_transfer_status AS
-SELECT x.*, a.run_id, a.station_id AS source_station, k.now_ts AS data_now_ts,
+SELECT x.*, a.run_id, a.replay_id, a.station_id AS source_station, k.now_ts AS data_now_ts,
        EXTRACT(EPOCH FROM (COALESCE(x.effective_to_ts, k.now_ts) - x.effective_from_ts)) / 60 AS active_min,
        (x.effective_to_ts IS NULL AND k.now_ts - x.effective_from_ts >= INTERVAL '2 hours')   AS is_overdue
 FROM fact_alert_action x

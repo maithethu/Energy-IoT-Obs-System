@@ -132,6 +132,18 @@ SELECT add_continuous_aggregate_policy('agg_hourly',
 --    Đỏ bị bỏ lỡ = RESOLVED, không chuyển tải (action_ts rỗng), không phải báo giả.
 --    Detector không ghi đè cột của người trực.
 -- ---------------------------------------------------------------------
+-- Lần phát lại (sped.md §9, R3/D7): mỗi lần chạy producer cho run LIVE là một phiên.
+-- Cảnh báo LIVE ghi replay_id của phiên đang chạy → lịch sử các lần phát được giữ, phân biệt được.
+CREATE TABLE IF NOT EXISTS replay_session (
+    replay_id  BIGSERIAL PRIMARY KEY,
+    event_id   TEXT,                                      -- mã sự cố (--event); NULL khi phát theo --start/--end
+    speed      DOUBLE PRECISION,
+    data_from  TIMESTAMP,                                 -- mốc dữ liệu đầu / cuối được phát
+    data_to    TIMESTAMP,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ended_at   TIMESTAMPTZ                                -- NULL = đang phát (hoặc bị dừng giữa chừng)
+);
+
 CREATE TABLE IF NOT EXISTS fact_alert (
     alert_id          BIGSERIAL PRIMARY KEY,
     run_id            TEXT NOT NULL DEFAULT 'LIVE' CHECK (run_id IN ('LIVE', 'HISTORY')),
@@ -164,6 +176,8 @@ CREATE TABLE IF NOT EXISTS fact_alert (
     speed_pct_h       DOUBLE PRECISION,                    -- load_pct − load_pct 1 giờ trước
     below_close_count SMALLINT NOT NULL DEFAULT 0,         -- số lần liên tiếp < close_pct (hysteresis)
     received_load     DOUBLE PRECISION,                    -- lượng tải đang NHẬN về khi cảnh báo mở (trạm nhận)
+    replay_id         BIGINT REFERENCES replay_session (replay_id),   -- lần phát (run LIVE); NULL với HISTORY
+    close_reason      TEXT CHECK (close_reason IN ('REPLAY_END')),    -- đóng do kết thúc lần phát (không tính bỏ lỡ)
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT ck_type_severity CHECK ((alert_type = 'SENSOR') = (severity = 'SENSOR')),
     CONSTRAINT ck_ack           CHECK (status <> 'ACK' OR (acked_at IS NOT NULL AND acked_by IS NOT NULL)),
@@ -185,6 +199,7 @@ CREATE INDEX IF NOT EXISTS ix_alert_run_station_ts ON fact_alert (run_id, statio
 --   SAFE    : < close_pct (85%) hai mốc liên tiếp sau khi chuyển
 --   TIMEOUT : đã chuyển ≥ 2 giờ dữ liệu và < yellow_pct (90%)
 --   Quá 2 giờ mà vẫn ≥ 90% → còn hiệu lực, dashboard hiện "Chuyển tải quá hạn".
+--   REPLAY_END : còn hiệu lực khi bắt đầu lần phát mới (sql/reset_replay.sql trả hộ).
 CREATE TABLE IF NOT EXISTS fact_alert_action (
     action_id         BIGSERIAL PRIMARY KEY,
     alert_id          BIGINT NOT NULL REFERENCES fact_alert (alert_id),
@@ -193,7 +208,7 @@ CREATE TABLE IF NOT EXISTS fact_alert_action (
     target_station    TEXT REFERENCES dim_substation (station_id),        -- chỉ dùng cho TRANSFER
     effective_from_ts TIMESTAMP,                                          -- mốc dữ liệu lúc xác nhận
     effective_to_ts   TIMESTAMP,                                          -- mốc dữ liệu lúc trả tải (NULL = còn hiệu lực)
-    return_reason     TEXT CHECK (return_reason IN ('SAFE', 'TIMEOUT')),
+    return_reason     TEXT CHECK (return_reason IN ('SAFE', 'TIMEOUT', 'REPLAY_END')),
     done_by           TEXT NOT NULL,
     done_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT ck_target_transfer CHECK ((action_type = 'TRANSFER') = (target_station IS NOT NULL)),

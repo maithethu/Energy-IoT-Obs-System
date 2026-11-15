@@ -73,3 +73,4 @@ table dim_date
 				    Typed = Table.TransformColumnTypes ( Source, {{"date", type date}, {"year", Int64.Type}, {"month_no", Int64.Type}, {"year_month", type text}, {"day_of_month", Int64.Type}, {"weekday_no", Int64.Type}, {"weekday_name", type text}, {"is_weekend", Int64.Type}, {"season", type text}}, "en-US" )
 				in
 				    Typed
+

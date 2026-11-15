@@ -36,7 +36,7 @@ docker compose exec timescaledb psql -U energy -d energy \
 ## 2. Chạy producer
 
 ```bash
-python producer/producer.py --speed 20 --event EV029               # demo: 15 phút dữ liệu = 45 giây
+python producer/producer.py --speed 20 --event EV031 --before-hours 1   # demo: 15 phút dữ liệu = 45 giây
 python producer/producer.py --speed 60 --start 2017-11-01          # nhanh: 15 phút dữ liệu = 15 giây
 python producer/producer.py --speed 0  --start 2017-11-01 --days 1  # hết tốc độ, đúng 1 ngày (để kiểm tra)
 python producer/producer.py --speed 0                               # nạp cả 8 tháng (91.328 dòng)
@@ -47,7 +47,7 @@ python producer/producer.py --speed 0                               # nạp cả
 | `--speed` | `1`, `20` (demo), `60`, `x60`... ; `0` = hết tốc độ. 15 phút dữ liệu = 900 / speed giây |
 | `--start` | Bắt đầu phát từ `YYYY-MM-DD` hoặc `"YYYY-MM-DD HH:MM"` (mặc định: đầu file) |
 | `--days N` / `--end` | Dừng sau N ngày / trước mốc `--end` |
-| `--event` | Phát lại một sự cố của `event_label.csv` (vd `EV029`): từ `t_start − 2 giờ` đến `t_end + 2 giờ` |
+| `--event` | Phát lại một sự cố của `event_label.csv` (vd `EV031`): từ `t_start − --before-hours` (mặc định 2; demo 1) đến `t_end + 2 giờ` |
 | `--dry-run` | Chỉ in kế hoạch phát, không ghi DB |
 | `--dsn` | Chuỗi kết nối (mặc định `postgresql://energy:energy@localhost:5433/energy`, hoặc biến `DATABASE_URL` / `POSTGRES_*`) |
 

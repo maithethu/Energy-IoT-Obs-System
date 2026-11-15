@@ -3,7 +3,7 @@
   "name": "7d0a0dd2f3a44a2ebe03",
   "position": {
     "x": 769,
-    "y": 8,
+    "y": 36,
     "z": 4000,
     "height": 96,
     "width": 243,
@@ -86,7 +86,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'Đợt quá tải thật (đáp án)'"
+                  "Value": "'Đợt quá tải thật'"
                 }
               }
             },

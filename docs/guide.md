@@ -76,7 +76,7 @@ Thư mục `data/` được mount vào container tại `/data`.
 | Dashboard báo `column ... does not exist` | DB còn schema cũ: chạy mục 6 |
 | Dashboard báo lỗi kết nối | Xem log: `docker compose logs dashboard`; kiểm tra `DATABASE_URL` |
 | `docker compose up --build` dừng ở "additional privileges requested" | Build riêng: `docker build -t <project>-dashboard dashboard` rồi `docker compose up -d --no-build --force-recreate dashboard` |
-| Python báo `no pq wrapper available` (Windows App Control chặn DLL) | Chạy `USE_DOCKER=1 scripts/replay_event.sh EV029` |
+| Python báo `no pq wrapper available` (Windows App Control chặn DLL) | Chạy `USE_DOCKER=1 scripts/replay_event.sh EV031` |
 | Detector báo "Checkpoint … phương pháp cũ" | Chạy `sql/reset_replay.sql` rồi chạy lại detector |
 
 ## 9. Dừng hệ thống

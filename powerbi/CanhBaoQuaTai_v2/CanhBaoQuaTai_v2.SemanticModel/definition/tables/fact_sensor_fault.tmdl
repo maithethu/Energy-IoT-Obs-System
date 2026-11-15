@@ -111,3 +111,4 @@ table fact_sensor_fault
 				    Typed = Table.TransformColumnTypes ( Source, {{"event_id", type text}, {"station_id", type text}, {"detail", type text}, {"t_start", type datetime}, {"t_end", type datetime}, {"date", type date}, {"year_month", type text}, {"start_day_of_month", Int64.Type}, {"start_hour", Int64.Type}, {"duration_hours", type number}, {"first_open_ts", type datetime}, {"is_detected", Int64.Type}, {"detect_delay_min", type number}, {"run_id", type text}}, "en-US" )
 				in
 				    Typed
+

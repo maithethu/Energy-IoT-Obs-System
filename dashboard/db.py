@@ -17,6 +17,9 @@ import streamlit as st
 from psycopg.rows import dict_row
 
 RUN_ID = "LIVE"
+# Lần phát hiện tại (sped §9 R3): trang trạm chỉ xem cảnh báo / chuyển tải của lần phát đang chạy –
+# lịch sử các lần phát trước vẫn giữ trong DB cho Power BI và trang Báo cáo.
+CURRENT_REPLAY = "replay_id IS NOT DISTINCT FROM (SELECT max(replay_id) FROM replay_session)"
 
 
 class StaleAlert(Exception):
@@ -120,6 +123,19 @@ def load_series(station: str, start: Any, end: Any) -> pd.DataFrame:
     return frame(sql, (RUN_ID, station, start, end))
 
 
+def sensor_intervals(station: str, start: Any, end: Any) -> list[dict]:
+    """Đoạn cảm biến lỗi (lần phát hiện tại) giao với [start, end]: từ lúc số đo bắt đầu đứng yên
+    (= opened_ts − (stuck_records − 1) mốc) đến lúc đóng (hoặc mốc dữ liệu mới nhất)."""
+    sql = """SELECT q.opened_ts - (p.stuck_records - 1) * INTERVAL '15 minutes' AS stuck_from,
+                    COALESCE(q.resolved_ts, q.data_now_ts) AS stuck_to, q.alert_id, q.status, q.root_cause
+               FROM v_alert_queue q JOIN param_threshold p USING (station_id)
+              WHERE q.run_id = %s AND q.station_id = %s AND q.alert_type = 'SENSOR'
+                AND q.replay_id IS NOT DISTINCT FROM (SELECT max(replay_id) FROM replay_session)
+                AND COALESCE(q.resolved_ts, q.data_now_ts) >= %s AND q.opened_ts <= %s
+              ORDER BY q.opened_ts"""
+    return rows(sql, (RUN_ID, station, start, end))
+
+
 def loads_at(station: str, ts: Any) -> dict | None:
     """Tải đo (load_pct) và tải sau chuyển tải (load_pct_sim) tại một mốc."""
     return one("SELECT load_pct, load_pct_sim FROM v_load_sim WHERE run_id = %s AND station_id = %s AND ts = %s",
@@ -127,18 +143,19 @@ def loads_at(station: str, ts: Any) -> dict | None:
 
 
 def alert_history(station: str, since: Any) -> list[dict]:
-    sql = """SELECT alert_id, alert_type, severity, status, opened_ts, resolved_ts, peak_load_pct,
+    sql = f"""SELECT alert_id, alert_type, severity, status, opened_ts, resolved_ts, peak_load_pct,
                     verdict, root_cause, received_load, handled_ts, clock_start_ts, action_ts,
-                    data_wait_min, is_overdue, is_missed, is_late
+                    data_wait_min, is_overdue, is_missed, is_late, close_reason
                FROM v_alert_queue WHERE run_id = %s AND station_id = %s AND opened_ts >= %s
+                AND {CURRENT_REPLAY}
               ORDER BY opened_ts DESC"""
     return rows(sql, (RUN_ID, station, since))
 
 
 def transfers(station: str | None = None, alert_id: int | None = None) -> list[dict]:
     """Các lần chuyển tải (đi hoặc đến trạm), mới nhất trước, kèm trạng thái quá hạn."""
-    sql = """SELECT * FROM v_transfer_status
-              WHERE run_id = %s AND action_type = 'TRANSFER'
+    sql = f"""SELECT * FROM v_transfer_status
+              WHERE run_id = %s AND action_type = 'TRANSFER' AND {CURRENT_REPLAY}
                 AND (%s::text IS NULL OR source_station = %s OR target_station = %s)
                 AND (%s::bigint IS NULL OR alert_id = %s)
               ORDER BY effective_from_ts DESC, action_id DESC"""
@@ -146,10 +163,10 @@ def transfers(station: str | None = None, alert_id: int | None = None) -> list[d
 
 
 def last_red_result(station: str) -> dict | None:
-    """Cảnh báo Đỏ đã đóng gần nhất của trạm (thẻ "Kết quả xử lý"), kể cả bỏ lỡ / báo giả."""
-    sql = """SELECT * FROM v_alert_queue
+    """Cảnh báo Đỏ đã đóng gần nhất của trạm trong lần phát hiện tại (thẻ "Kết quả xử lý")."""
+    sql = f"""SELECT * FROM v_alert_queue
               WHERE run_id = %s AND station_id = %s AND alert_type = 'OVERLOAD' AND severity = 'RED'
-                AND status = 'RESOLVED'
+                AND status = 'RESOLVED' AND {CURRENT_REPLAY}
               ORDER BY opened_ts DESC LIMIT 1"""
     return one(sql, (RUN_ID, station))
 

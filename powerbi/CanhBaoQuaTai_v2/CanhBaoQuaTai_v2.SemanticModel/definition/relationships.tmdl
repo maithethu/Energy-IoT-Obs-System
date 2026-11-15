@@ -54,3 +54,4 @@ relationship 8770b2af-1442-4efa-aba5-c08ed6d5c53d
 relationship c78a2757-679f-4dfc-b78c-e88efcca52ca
 	fromColumn: live_transfer.date
 	toColumn: dim_date.date
+

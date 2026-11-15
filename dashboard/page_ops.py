@@ -10,10 +10,9 @@ import streamlit as st
 
 import common
 import db
-import page_report
 
-QUEUE_WIDTHS = [0.4, 1.1, 1.0, 0.9, 0.9, 2.0, 1.4]
-QUEUE_HEADERS = ["#", "Trạm", "Mức", "Tải", "Còn", "Người xử lý / đã chờ (giờ dữ liệu)", ""]
+QUEUE_WIDTHS = [0.4, 1.1, 1.0, 1.8, 2.0, 1.4]
+QUEUE_HEADERS = ["#", "Trạm", "Mức", "Tình trạng", "Xử lý · thời hạn (giờ dữ liệu)", ""]
 
 
 def render() -> None:
@@ -34,14 +33,12 @@ def live_block() -> None:
     station_tiles(list(stations.values()), params, overdue)
     common.section(f"Hàng đợi cảnh báo đang mở ({len(queue)})")
     alert_queue(queue, params)
-    common.section("Kết quả xử lý sự cố Đỏ")
-    page_report.operations_block()
 
 
 def tile_subline(row: dict, load: float, red_pct: float) -> str:
     level = row["load_level"]
     if level == "SENSOR":
-        return "Cảm biến kẹt"
+        return "Cảm biến lỗi – số liệu không tin cậy"
     if level == "NORMAL":
         return "Bình thường"
     if row["ttb_min"] is not None:
@@ -52,7 +49,7 @@ def tile_subline(row: dict, load: float, red_pct: float) -> str:
 def subline_ink(row: dict, load: float, p: dict) -> str:
     level = row["load_level"]
     if level == "SENSOR":
-        return common.INK["GRAY"]
+        return common.INK["SENSOR"]
     if level == "NORMAL":
         return common.INK["GREEN"]
     if row["ttb_min"] is not None:
@@ -79,12 +76,18 @@ def station_card(row: dict, p: dict, overdue: bool = False) -> str:
     level = row["load_level"]
     load, simulated = common.shown_load(row)
     tag = f' <span style="font-size:0.8rem;color:#4C78A8">{common.SIM_TAG}</span>' if simulated else ""
+    sensor = level == "SENSOR"                 # cảm biến lỗi: cả ô chuyển tông xám, số liệu không tin cậy
+    number_ink = common.INK["SENSOR"] if sensor else common.load_ink(load, p)
+    background = f"{common.COLORS['SENSOR']}33" if sensor else f"{common.COLORS[level]}14"
+    trend = common.span("số đo đứng yên", common.INK["SENSOR"]) if sensor else ""
+    bar = (f'<div class="bar"><div class="fill" style="width:100%;background:{common.COLORS["SENSOR"]};opacity:.45">'
+           f'</div></div>') if sensor else common.load_bar(load, p)
     return (
-        f'<div class="card" style="border-left-color:{common.COLORS[level]};background:{common.COLORS[level]}14">'
+        f'<div class="card" style="border-left-color:{common.COLORS[level]};background:{background}">'
         f'<div class="name"><span>{row["station_name"]}</span>{common.chip(level)}</div>'
-        f'<div><span class="big" style="color:{common.load_ink(load, p)}">{load:.1f}%</span>{tag}'
-        f'<span class="trend">{common.trend_html(row["speed_pct_h"])}</span></div>'
-        f'{common.load_bar(load, p)}'
+        f'<div><span class="big" style="color:{number_ink}">{load:.1f}%</span>{tag}'
+        f'<span class="trend">{trend}</span></div>'
+        f'{bar}'
         f'{subline_html(row, load, p)}{transfer_note(row, overdue)}</div>')
 
 
@@ -145,14 +148,23 @@ def queue_row(index: int, alert: dict, p: dict) -> None:
     cols[1].markdown(f"**{alert['station_name']}**")
     label = common.LEVEL_LABEL[alert["severity"]] + (" · quá hạn" if escalated else "")
     cols[2].markdown(common.chip(alert["severity"], label, blink=escalated), unsafe_allow_html=True)
-    load, ttb = alert["load_pct"], alert["ttb_min"]
-    cols[3].markdown(common.span(f"{load:.1f}%", common.load_ink(load, p)) if load is not None else "—",
-                     unsafe_allow_html=True)
-    cols[4].markdown(common.span(f"{ttb:.0f} phút", common.ttb_ink(ttb, p)) if ttb is not None else "—",
-                     unsafe_allow_html=True)
-    cols[5].markdown(owner_text(alert), unsafe_allow_html=True)
-    with cols[6]:
+    cols[3].markdown(situation_text(alert, p), unsafe_allow_html=True)
+    cols[4].markdown(owner_text(alert), unsafe_allow_html=True)
+    with cols[5]:
         action_button(alert)
+
+
+def situation_text(alert: dict, p: dict) -> str:
+    """Một dòng tình trạng: % tải và còn bao lâu tới 100% (hoặc lý do không tin số liệu)."""
+    if alert["severity"] == "SENSOR":
+        return common.span("Số đo đứng yên – không tin số liệu", common.INK["SENSOR"])
+    load, ttb = alert["load_pct"], alert["ttb_min"]
+    text = common.span(f"{load:.1f}%", common.load_ink(load, p)) if load is not None else "—"
+    if ttb is not None:
+        text += " · " + common.span(f"còn {ttb:.0f}′ tới 100%", common.ttb_ink(ttb, p))
+    elif load is not None and load >= p["red_pct"]:
+        text += " · " + common.span("đang quá tải", common.INK["RED"])
+    return text
 
 
 def action_button(alert: dict) -> None:

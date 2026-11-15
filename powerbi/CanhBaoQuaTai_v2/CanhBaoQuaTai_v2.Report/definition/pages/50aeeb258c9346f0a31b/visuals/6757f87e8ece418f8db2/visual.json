@@ -3,7 +3,7 @@
   "name": "6757f87e8ece418f8db2",
   "position": {
     "x": 16,
-    "y": 112,
+    "y": 140,
     "z": 7000,
     "height": 600,
     "width": 1248,
@@ -15,6 +15,20 @@
       "queryState": {
         "Values": {
           "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "live_transfer"
+                    }
+                  },
+                  "Property": "replay_event_id"
+                }
+              },
+              "queryRef": "live_transfer.replay_event_id",
+              "nativeQueryRef": "replay_event_id"
+            },
             {
               "field": {
                 "Column": {
