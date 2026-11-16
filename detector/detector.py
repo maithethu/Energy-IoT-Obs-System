@@ -29,6 +29,10 @@ FIELDS = ["station_id", "alert_type", "severity", "trigger_rule", "status",
 PARAM_KEYS = ("rated_load", "yellow_pct", "red_pct", "yellow_ttb_min", "red_ttb_min",
               "close_pct", "close_records", "stuck_records")
 TRANSFER_TIMEOUT = timedelta(hours=2)
+# Run LIVE giữ lịch sử nhiều lần phát (sped §9 R3): chỉ so khớp với cảnh báo của LẦN PHÁT HIỆN TẠI,
+# nếu không, phát lại một sự cố đã từng phát sẽ đụng cảnh báo cũ cùng opened_ts và bị coi là "báo giả".
+CURRENT_REPLAY = ("(%(run_id)s <> 'LIVE' OR replay_id IS NOT DISTINCT FROM "
+                  "(SELECT max(replay_id) FROM replay_session))")
 
 Alert = dict[str, Any]
 Params = dict[str, dict[str, float]]
@@ -196,6 +200,7 @@ UPDATE fact_alert SET severity=%(severity)s, trigger_rule=%(trigger_rule)s,
        speed_pct_h=%(speed_pct_h)s, below_close_count=%(below_close_count)s, updated_at=now()
  WHERE run_id=%(run_id)s AND station_id=%(station_id)s AND alert_type=%(alert_type)s
    AND opened_ts=%(opened_ts)s AND status IN ('OPEN', 'ACK', 'ACTION_TAKEN')
+   AND """ + CURRENT_REPLAY + """
 RETURNING alert_id"""
 
 INSERT_ALERT_SQL = """
@@ -257,7 +262,7 @@ def write_alert(cur: Any, run_id: str, alert: Alert) -> int | None:
     if row:
         return row["alert_id"]
     cur.execute("""SELECT 1 FROM fact_alert WHERE run_id=%(run_id)s AND station_id=%(station_id)s
-                     AND alert_type=%(alert_type)s AND opened_ts=%(opened_ts)s""", values)
+                     AND alert_type=%(alert_type)s AND opened_ts=%(opened_ts)s AND """ + CURRENT_REPLAY, values)
     if cur.fetchone():
         return None
     cur.execute(INSERT_ALERT_SQL, values)
